@@ -511,7 +511,7 @@ const AdminOrders = () => {
                       {product.title}
                     </p>
                     <p className="text-sm text-slate-500">
-                      ₹{product.discount_price} • {product.category}
+                      ₹{product.discount_price} • {product.category}{product.tax ? ` • ${product.tax}% Tax` : ''}
                     </p>
                   </div>
                   <button
