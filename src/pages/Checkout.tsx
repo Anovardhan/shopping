@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { CreditCard, Truck, ShieldCheck, MapPin } from "lucide-react";
-import api from "../utils/api";
+import { database } from "../utils/firebase";
+import { ref, set } from "firebase/database";
 
 const Checkout = () => {
   const { cart, cartTotal, clearCart } = useCart();
@@ -35,7 +36,10 @@ const Checkout = () => {
     setIsProcessing(true);
 
     try {
+      const newId = "ORD-" + Math.floor(100000 + Math.random() * 900000);
       const newOrder = {
+        id: newId,
+        created_at: new Date().toISOString(),
         user_id: user?.id || "guest",
         total_amount: totalAmount,
         order_status: "PROCESSING",
@@ -48,8 +52,8 @@ const Checkout = () => {
         customer_details: formData,
       };
 
-      // Save order on Express backend database
-      await api.post("/orders", newOrder);
+      // Save order on Firebase
+      await set(ref(database, `orders/${newId}`), newOrder);
 
       // Local fallback sync
       const savedOrders = JSON.parse(localStorage.getItem("orders") || "[]");

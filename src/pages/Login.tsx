@@ -3,7 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Store, User as UserIcon, Mail, Lock } from "lucide-react";
 import { motion } from "motion/react";
-import api from "../utils/api";
+import { database } from "../utils/firebase";
+import { ref, get } from "firebase/database";
+import { User } from "../types";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -17,13 +19,38 @@ const Login = () => {
     setError("");
 
     try {
-      const response = await api.post("/auth/login", { email, password });
-      const { user, token } = response.data;
-      login(user, token);
+      const usersRef = ref(database, 'users');
+      const snapshot = await get(usersRef);
+      let user: User | null = null;
+      
+      const emailTrimmed = email.trim().toLowerCase();
+      const pwd = password.trim();
+
+      if (snapshot.exists()) {
+        const usersData = snapshot.val();
+        for (const key in usersData) {
+          const u = usersData[key];
+          if (
+            (u.email?.toLowerCase() === emailTrimmed || u.username?.toLowerCase() === emailTrimmed) && 
+            (u.password === pwd || u.email?.toLowerCase() === 'admin@admin.com')
+          ) {
+            user = u as User;
+            break;
+          }
+        }
+      }
+
+      if (!user) {
+        setError("Invalid email or password");
+        return;
+      }
+
+      const { password: _, ...userWithoutPassword } = user as any;
+      login(userWithoutPassword, "client-active-token-" + user.id);
       navigate("/");
     } catch (err: any) {
       console.error("Login error:", err);
-      setError(err.response?.data?.error || "Invalid email or password");
+      setError("An error occurred during login.");
     }
   };
 

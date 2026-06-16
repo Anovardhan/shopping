@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { categories } from "../data/data";
-import api from "../utils/api";
+import { database } from "../utils/firebase";
+import { ref, get, remove } from "firebase/database";
 
 const AdminOrders = () => {
   const { user } = useAuth();
@@ -44,26 +45,30 @@ const AdminOrders = () => {
     }
   }, [user, navigate]);
 
-  const fetchOrders = () => {
-    api.get<OrderType[]>("/orders")
-      .then((res) => {
-        const fetched = res.data || [];
+  const fetchOrders = async () => {
+    try {
+      const ordersRef = ref(database, 'orders');
+      const snapshot = await get(ordersRef);
+      if (snapshot.exists()) {
+        const fetched = Object.values(snapshot.val()) as OrderType[];
         fetched.sort(
           (a: any, b: any) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
         setOrders(fetched);
-      })
-      .catch((err) => {
-        console.error("Error fetching admin orders:", err);
-        // Localstorage fallback
-        const savedOrders = JSON.parse(localStorage.getItem("orders") || "[]");
-        savedOrders.sort(
-          (a: any, b: any) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-        );
-        setOrders(savedOrders);
-      });
+      } else {
+        setOrders([]);
+      }
+    } catch (err) {
+      console.error("Error fetching admin orders:", err);
+      // Localstorage fallback
+      const savedOrders = JSON.parse(localStorage.getItem("orders") || "[]");
+      savedOrders.sort(
+        (a: any, b: any) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+      setOrders(savedOrders);
+    }
   };
 
   useEffect(() => {
@@ -117,13 +122,12 @@ const AdminOrders = () => {
 
   const handleDeleteOrder = async (orderId: string) => {
     try {
-      await api.delete(`/orders/${orderId}`);
+      await remove(ref(database, `orders/${orderId}`));
       const updatedOrders = orders.filter((o) => o.id !== orderId);
       setOrders(updatedOrders);
       localStorage.setItem("orders", JSON.stringify(updatedOrders));
     } catch (err) {
       console.error("Error deleting order:", err);
-      // Fallback
     }
   };
 

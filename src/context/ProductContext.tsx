@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { Product, Review } from "../types";
-import api from "../utils/api";
+import { database } from "../utils/firebase";
+import { ref, get, set, remove, push } from "firebase/database";
 
 interface ProductContextType {
   products: Product[];
@@ -32,32 +33,37 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({
   const [products, setProducts] = useState<Product[]>([]);
 
   useEffect(() => {
-    // Fetch products from backend
-    api.get<Product[]>("/products")
-      .then(res => {
-        setProducts(res.data);
-        // Sync to local storage for offline fallback if desired
-        localStorage.setItem("products", JSON.stringify(res.data));
-      })
-      .catch(err => {
-        console.error("Error fetching products:", err);
-        const savedProducts = localStorage.getItem("products");
-        if (savedProducts) {
-          setProducts(JSON.parse(savedProducts));
+    // Fetch products from Firebase
+    const fetchProducts = async () => {
+      try {
+        const snapshot = await get(ref(database, 'products'));
+        if (snapshot.exists()) {
+          const productsData = Object.values(snapshot.val()) as Product[];
+          setProducts(productsData);
+        } else {
+          setProducts([]);
         }
-      });
+      } catch (err) {
+        console.error("Error fetching products:", err);
+      }
+    };
+    fetchProducts();
   }, []);
 
   const addProduct = async (
     productData: Omit<Product, "id" | "created_at" | "rating" | "reviews">,
   ) => {
     try {
-      const res = await api.post<Product>("/products", productData);
-      setProducts(prev => {
-        const updated = [res.data, ...prev];
-        localStorage.setItem("products", JSON.stringify(updated));
-        return updated;
-      });
+      const newId = `prod_${Date.now()}`;
+      const newProduct: Product = {
+        ...productData,
+        id: newId,
+        created_at: new Date().toISOString(),
+        rating: 5.0,
+        reviews: []
+      };
+      await set(ref(database, `products/${newId}`), newProduct);
+      setProducts(prev => [newProduct, ...prev]);
     } catch (err) {
       console.error("Error adding product:", err);
     }
@@ -65,63 +71,66 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const deleteProduct = async (productId: string) => {
     try {
-      await api.delete(`/products/${productId}`);
-      setProducts(prev => {
-        const updated = prev.filter(p => p.id !== productId);
-        localStorage.setItem("products", JSON.stringify(updated));
-        return updated;
-      });
+      await remove(ref(database, `products/${productId}`));
+      setProducts(prev => prev.filter(p => p.id !== productId));
     } catch (err) {
       console.error("Error deleting product:", err);
     }
   };
 
-  const addReview = (
+  const addReview = async (
     productId: string,
     reviewData: Omit<Review, "id" | "createdAt">,
   ) => {
-    // Simplistic local state update (in a full app, this would be an API call)
-    setProducts((prevProducts) => {
-      const updatedProducts = prevProducts.map((p) => {
-        if (p.id === productId) {
-          const newReview: Review = {
-            ...reviewData,
-            id: Math.random().toString(36).substring(2, 9),
-            createdAt: new Date().toISOString(),
-          };
-          const existingReviews = p.reviews || [];
-          const updatedReviews = [newReview, ...existingReviews];
-          const newRating = calculateAverageRating(updatedReviews, p.rating);
-          return {
-            ...p,
-            rating: newRating,
-            reviews: updatedReviews,
-          };
-        }
-        return p;
-      });
-      localStorage.setItem("products", JSON.stringify(updatedProducts));
-      return updatedProducts;
-    });
+    try {
+      const product = products.find(p => p.id === productId);
+      if (!product) return;
+
+      const newReview: Review = {
+        ...reviewData,
+        id: Math.random().toString(36).substring(2, 9),
+        createdAt: new Date().toISOString(),
+      };
+      
+      const updatedReviews = [newReview, ...(product.reviews || [])];
+      const newRating = calculateAverageRating(updatedReviews, product.rating);
+      
+      await set(ref(database, `products/${productId}/reviews`), updatedReviews);
+      await set(ref(database, `products/${productId}/rating`), newRating);
+
+      setProducts((prevProducts) => 
+        prevProducts.map((p) => 
+          p.id === productId 
+            ? { ...p, rating: newRating, reviews: updatedReviews }
+            : p
+        )
+      );
+    } catch (err) {
+      console.error("Error adding review:", err);
+    }
   };
 
-  const deleteReview = (productId: string, reviewId: string) => {
-    setProducts((prevProducts) => {
-      const updatedProducts = prevProducts.map((p) => {
-        if (p.id === productId && p.reviews) {
-          const updatedReviews = p.reviews.filter((r) => r.id !== reviewId);
-          const newRating = calculateAverageRating(updatedReviews, p.rating);
-          return {
-            ...p,
-            rating: newRating,
-            reviews: updatedReviews,
-          };
-        }
-        return p;
-      });
-      localStorage.setItem("products", JSON.stringify(updatedProducts));
-      return updatedProducts;
-    });
+  const deleteReview = async (productId: string, reviewId: string) => {
+    try {
+      const product = products.find(p => p.id === productId);
+      if (!product || !product.reviews) return;
+
+      const updatedReviews = product.reviews.filter(r => r.id !== reviewId);
+      const newRating = calculateAverageRating(updatedReviews, product.rating);
+
+      await set(ref(database, `products/${productId}/reviews`), updatedReviews);
+      await set(ref(database, `products/${productId}/rating`), newRating);
+
+      setProducts((prevProducts) => 
+        prevProducts.map((p) => 
+          p.id === productId 
+            ? { ...p, rating: newRating, reviews: updatedReviews }
+            : p
+        )
+      );
+    } catch (err) {
+      console.error("Error deleting review:", err);
+    }
   };
 
   return (

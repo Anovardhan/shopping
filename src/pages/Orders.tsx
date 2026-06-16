@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { Package, Clock, CheckCircle, Truck, XCircle } from 'lucide-react';
-import api from '../utils/api';
+import { database } from '../utils/firebase';
+import { ref, get } from 'firebase/database';
 
 const Orders = () => {
   const { user } = useAuth();
@@ -15,20 +16,28 @@ const Orders = () => {
       return;
     }
     
-    // Fetch orders from Express backend API
-    api.get<any[]>('/orders')
-      .then(res => {
-        const userOrders = res.data.filter((o: any) => o.user_id === user.id);
-        setOrders(userOrders);
-      })
-      .catch(err => {
+    // Fetch orders from Firebase
+    const fetchOrders = async () => {
+      try {
+        const ordersRef = ref(database, 'orders');
+        const snapshot = await get(ordersRef);
+        if (snapshot.exists()) {
+          const fetched = Object.values(snapshot.val());
+          const userOrders = fetched.filter((o: any) => o.user_id === user.id);
+          setOrders(userOrders);
+        } else {
+          setOrders([]);
+        }
+      } catch (err) {
         console.error("Error fetching orders:", err);
         // Fallback to local storage if API is offline
         const savedOrders = localStorage.getItem('orders');
         if (savedOrders) {
           setOrders(JSON.parse(savedOrders).filter((o: any) => o.user_id === user.id));
         }
-      });
+      }
+    };
+    fetchOrders();
   }, [user, navigate]);
 
   const getStatusColor = (status: string) => {

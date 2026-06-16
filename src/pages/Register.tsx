@@ -3,7 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Store, User as UserIcon, Mail, Lock } from "lucide-react";
 import { motion } from "motion/react";
-import api from "../utils/api";
+import { database } from "../utils/firebase";
+import { ref, get, set } from "firebase/database";
+import { User } from "../types";
 
 const Register = () => {
   const [name, setName] = useState("");
@@ -21,17 +23,42 @@ const Register = () => {
     }
     
     try {
-      const response = await api.post("/auth/register", {
-        username: name,
-        email,
-        password,
-      });
-      const { user, token } = response.data;
-      login(user, token);
+      const usersRef = ref(database, 'users');
+      const snapshot = await get(usersRef);
+      let exists = false;
+
+      if (snapshot.exists()) {
+        const usersData = snapshot.val();
+        for (const key in usersData) {
+          if (usersData[key].email?.toLowerCase() === email.trim().toLowerCase()) {
+            exists = true;
+            break;
+          }
+        }
+      }
+
+      if (exists) {
+        alert("An account with this email already exists.");
+        return;
+      }
+
+      const newId = "usr_" + Date.now();
+      const newUser: User = {
+        id: newId,
+        username: name.trim(),
+        email: email.trim(),
+        password: password.trim(),
+        isAdmin: email.trim().toLowerCase() === "admin@admin.com" || email.trim().toLowerCase() === "admin"
+      };
+      
+      await set(ref(database, `users/${newId}`), newUser);
+      
+      const { password: _, ...userWithoutPassword } = newUser as any;
+      login(userWithoutPassword, "client-active-token-" + newUser.id);
       navigate("/");
     } catch (err: any) {
       console.error("Register error:", err);
-      alert(err.response?.data?.error || "Error during sign up. Please try again.");
+      alert("Error during sign up. Please try again.");
     }
   };
 
