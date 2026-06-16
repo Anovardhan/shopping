@@ -1,0 +1,6 @@
+{
+  "name": "Aura E-Commerce",
+  "description": "A premium e-commerce application built with React, Vite, Tailwind CSS, and Framer Motion.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
