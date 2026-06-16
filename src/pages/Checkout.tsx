@@ -35,10 +35,17 @@ const Checkout = () => {
     setIsProcessing(true);
 
     try {
+      if (!user) {
+        setIsProcessing(false);
+        alert("Please log in to place an order.");
+        return;
+      }
+
       const newOrder = {
-        user_id: user?.id || "guest",
+        user_id: user.id || "",
         total_amount: totalAmount,
         order_status: "PROCESSING",
+        created_at: new Date().toISOString(),
         items: cart.map((item) => ({
           id: item.product.id,
           product: item.product,
@@ -48,8 +55,10 @@ const Checkout = () => {
         customer_details: formData,
       };
 
-      // Save order on Express backend database
-      await api.post("/orders", newOrder);
+      // Save order to Firestore
+      const { collection, addDoc } = await import('firebase/firestore');
+      const { db } = await import('../utils/firebase');
+      await addDoc(collection(db, "orders"), newOrder);
 
       // Local fallback sync
       const savedOrders = JSON.parse(localStorage.getItem("orders") || "[]");

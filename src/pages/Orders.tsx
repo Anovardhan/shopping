@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { Package, Clock, CheckCircle, Truck, XCircle } from 'lucide-react';
-import api from '../utils/api';
+import { db } from '../utils/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 const Orders = () => {
   const { user } = useAuth();
@@ -15,20 +16,27 @@ const Orders = () => {
       return;
     }
     
-    // Fetch orders from Express backend API
-    api.get<any[]>('/orders')
-      .then(res => {
-        const userOrders = res.data.filter((o: any) => o.user_id === user.id);
-        setOrders(userOrders);
-      })
-      .catch(err => {
-        console.error("Error fetching orders:", err);
-        // Fallback to local storage if API is offline
-        const savedOrders = localStorage.getItem('orders');
-        if (savedOrders) {
-          setOrders(JSON.parse(savedOrders).filter((o: any) => o.user_id === user.id));
-        }
-      });
+    // Fetch orders from Firestore query
+    const q = query(
+      collection(db, "orders"),
+      where("user_id", "==", user.id)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const ordersData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setOrders(ordersData);
+    }, (error) => {
+      console.error("Firestore Error fetching orders:", error);
+      const savedOrders = localStorage.getItem('orders');
+      if (savedOrders) {
+        setOrders(JSON.parse(savedOrders).filter((o: any) => o.user_id === user.id));
+      }
+    });
+
+    return () => unsubscribe();
   }, [user, navigate]);
 
   const getStatusColor = (status: string) => {
